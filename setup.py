@@ -9,7 +9,8 @@ setup(
     author_email='srujith@kudikala.com',
     license='MIT',
     packages=['matrix_bot'],
-    install_requires=['matrix-nio[e2e]'                    
+    install_requires=['matrix-nio[e2e]',
+                      'Flask[async]'                
                       ],
     entry_points = {
         'console_scripts': [
