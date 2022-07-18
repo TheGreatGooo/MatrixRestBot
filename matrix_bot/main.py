@@ -7,15 +7,14 @@ import json
 import os
 import sys
 import argparse
-from flask import Flask, request
-from h11 import CLIENT
+from flask import Flask, jsonify, request
 
 from nio import AsyncClient, LoginResponse
 
 CONFIG_FILE = "credentials.json"
-CLINET = None
 APP = Flask(__name__)
-ROOM_ID = None
+room = None
+client = None
 
 def write_details_to_disk(resp: LoginResponse, homeserver) -> None:
     with open(CONFIG_FILE, "w") as f:
@@ -30,7 +29,9 @@ def write_details_to_disk(resp: LoginResponse, homeserver) -> None:
         )
 
 
-async def initializeClient(homeserver, bot_user_id, device_name, bot_password, room_id) -> None:
+def initializeClient(homeserver, bot_user_id, device_name, bot_password, room_id) -> None:
+    global client
+    global room
     if not os.path.exists(CONFIG_FILE):
         print(
             "First time use. Did not find credential file. Asking for "
@@ -41,12 +42,11 @@ async def initializeClient(homeserver, bot_user_id, device_name, bot_password, r
             homeserver = "https://" + homeserver
 
         user_id = bot_user_id
-        ROOM_ID = room_id
+        room = room_id
         client = AsyncClient(homeserver, user_id)
-        CLIENT = client
         pw = bot_password
 
-        resp = await client.login(pw, device_name=device_name)
+        resp = client.login(pw, device_name=device_name)
 
         if isinstance(resp, LoginResponse):
             write_details_to_disk(resp, homeserver)
@@ -54,31 +54,20 @@ async def initializeClient(homeserver, bot_user_id, device_name, bot_password, r
             print(f'homeserver = "{homeserver}"; user = "{user_id}"')
             print(f"Failed to log in: {resp}")
             sys.exit(1)
-
-        print(
-            "Logged in using a password. Credentials were stored.",
-            "Will exit now.",
-        )
-        await client.close()
     else:
         with open(CONFIG_FILE, "r") as f:
             config = json.load(f)
             client = AsyncClient(config["homeserver"])
-
+            room = room_id
             client.access_token = config["access_token"]
             client.user_id = config["user_id"]
             client.device_id = config["device_id"]
 
-        await client.room_send(
-            room_id,
-            message_type="m.room.message",
-            content={"msgtype": "m.text", "body": "Hello world!"},
-        )
-
 @APP.route('/message', methods=['GET','POST'])
 async def message_handler():
  if request.method == 'POST':
-    await send_message(request.get_json())
+    data = await send_message(request.get_json())
+    return jsonify(data)
  elif request.method == 'GET':
     return get_message_cache()
 
@@ -86,10 +75,11 @@ def get_message_cache():
     return []
 
 async def send_message(message_to_send):
-    await CLIENT.room_send(
-            ROOM_ID,
+    print(f"sending to {room} message {message_to_send['body']}")
+    await client.room_send(
+            room,
             message_type="m.room.message",
-            content={"msgtype": "m.text", "body": message_to_send.body},
+            content={"msgtype": "m.text", "body": message_to_send['body']},
         )
     return {"message":"Done!"}
 
@@ -102,5 +92,5 @@ def main() -> None:
     parser.add_argument('--room_id', help='The room this bot is monitoring ie. !BotParty:cake.example.org', required=True)
 
     args = parser.parse_args()
-    asyncio.run(initializeClient(args.homeserver, args.bot_uid, args.device_name, args.bot_pwd, args.room_id))
+    initializeClient(args.homeserver, args.bot_uid, args.device_name, args.bot_pwd, args.room_id)
     APP.run(debug=True)
