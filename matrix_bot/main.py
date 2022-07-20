@@ -8,8 +8,8 @@ import os
 import sys
 import argparse
 from flask import Flask, jsonify, request
-
-from nio import AsyncClient, LoginResponse
+from importlib import util
+from nio import AsyncClient, LoginResponse, ClientConfig, exceptions, crypto
 
 CONFIG_FILE = "credentials.json"
 APP = Flask(__name__)
@@ -29,7 +29,7 @@ def write_details_to_disk(resp: LoginResponse, homeserver) -> None:
         )
 
 
-def initializeClient(homeserver, bot_user_id, device_name, bot_password, room_id) -> None:
+async def initializeClient(homeserver, bot_user_id, device_name, bot_password, room_id) -> None:
     global client
     global room
     if not os.path.exists(CONFIG_FILE):
@@ -43,10 +43,10 @@ def initializeClient(homeserver, bot_user_id, device_name, bot_password, room_id
 
         user_id = bot_user_id
         room = room_id
-        client = AsyncClient(homeserver, user_id)
+        client = AsyncClient(homeserver, user_id,store_path = "store/", config=ClientConfig(encryption_enabled=True,store_sync_tokens=True))
         pw = bot_password
 
-        resp = client.login(pw, device_name=device_name)
+        resp = await client.login(pw, device_name=device_name)
 
         if isinstance(resp, LoginResponse):
             write_details_to_disk(resp, homeserver)
@@ -57,11 +57,32 @@ def initializeClient(homeserver, bot_user_id, device_name, bot_password, room_id
     else:
         with open(CONFIG_FILE, "r") as f:
             config = json.load(f)
-            client = AsyncClient(config["homeserver"])
+            client = AsyncClient(config["homeserver"],store_path = "store/", config=ClientConfig(encryption_enabled=True,store_sync_tokens=True))
             room = room_id
             client.access_token = config["access_token"]
             client.user_id = config["user_id"]
             client.device_id = config["device_id"]
+    async def after_first_sync():
+        print("Awaiting sync")
+        await client.synced.wait()
+        await send_message({"body":'test'})
+    after_first_sync_task = asyncio.ensure_future(after_first_sync())
+    sync_forever_task = asyncio.ensure_future(
+        client.sync_forever(30000, full_state=True)
+    )
+    await asyncio.gather(
+        after_first_sync_task,
+        sync_forever_task,
+    )
+
+def trust_devices(user_id):
+     print(f"{user_id}'s device store: {client.device_store[user_id]}")
+     for device_id, olm_device in client.device_store[user_id].items():
+            if user_id == client.user_id and device_id == client.device_id:
+                # We cannot explictly trust the device @alice is using
+                continue
+            client.verify_device(olm_device)
+            print(f"Trusting {device_id} from user {user_id}")
 
 @APP.route('/message', methods=['GET','POST'])
 async def message_handler():
@@ -76,11 +97,19 @@ def get_message_cache():
 
 async def send_message(message_to_send):
     print(f"sending to {room} message {message_to_send['body']}")
-    await client.room_send(
-            room,
-            message_type="m.room.message",
-            content={"msgtype": "m.text", "body": message_to_send['body']},
-        )
+    try:
+        await client.room_send(
+                room,
+                message_type="m.room.message",
+                content={"msgtype": "m.text", "body": message_to_send['body']},
+                ignore_unverified_devices=True,
+            )
+    except exceptions.OlmUnverifiedDeviceError as err:
+        print("These are all known devices:")
+        for device in client.device_store:
+            print(
+                f"\t{device.user_id}\t {device.device_id}\t {device.trust_state}\t  {device.display_name}"
+            )
     return {"message":"Done!"}
 
 def main() -> None:
@@ -91,6 +120,8 @@ def main() -> None:
     parser.add_argument('--bot_pwd', help='The password for the bot only required for the initial run', required=False)
     parser.add_argument('--room_id', help='The room this bot is monitoring ie. !BotParty:cake.example.org', required=True)
 
+    print("encryption enabled")
+    print(util.find_spec("olm"))
     args = parser.parse_args()
-    initializeClient(args.homeserver, args.bot_uid, args.device_name, args.bot_pwd, args.room_id)
+    asyncio.run(initializeClient(args.homeserver, args.bot_uid, args.device_name, args.bot_pwd, args.room_id))
     APP.run(debug=True)

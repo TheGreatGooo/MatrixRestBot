@@ -1,2 +1,5 @@
 matrix_bot/__pycache__/*
 matrix_bot.egg-info/**
+store/**
+credentials.json
+launch.json
