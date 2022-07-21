@@ -10,12 +10,13 @@ import argparse
 from flask import Flask, jsonify, request
 from importlib import util
 from nio import AsyncClient, LoginResponse, ClientConfig, exceptions, crypto
+from concurrent.futures import ThreadPoolExecutor
 
 CONFIG_FILE = "credentials.json"
 APP = Flask(__name__)
 room = None
 client = None
-
+EVENT_LOOP = asyncio.events.new_event_loop()
 def write_details_to_disk(resp: LoginResponse, homeserver) -> None:
     with open(CONFIG_FILE, "w") as f:
         json.dump(
@@ -65,7 +66,8 @@ async def initializeClient(homeserver, bot_user_id, device_name, bot_password, r
     async def after_first_sync():
         print("Awaiting sync")
         await client.synced.wait()
-        await send_message({"body":'test'})
+        APP.event_loop = EVENT_LOOP
+        EVENT_LOOP.run_in_executor(ThreadPoolExecutor(), APP.run)
     after_first_sync_task = asyncio.ensure_future(after_first_sync())
     sync_forever_task = asyncio.ensure_future(
         client.sync_forever(30000, full_state=True)
@@ -87,8 +89,8 @@ def trust_devices(user_id):
 @APP.route('/message', methods=['GET','POST'])
 async def message_handler():
  if request.method == 'POST':
-    data = await send_message(request.get_json())
-    return jsonify(data)
+    EVENT_LOOP.create_task(send_message(request.get_json()))
+    return jsonify("{'data':'Done!'}")
  elif request.method == 'GET':
     return get_message_cache()
 
@@ -123,5 +125,5 @@ def main() -> None:
     print("encryption enabled")
     print(util.find_spec("olm"))
     args = parser.parse_args()
-    asyncio.run(initializeClient(args.homeserver, args.bot_uid, args.device_name, args.bot_pwd, args.room_id))
-    APP.run(debug=True)
+    asyncio.set_event_loop(EVENT_LOOP)
+    EVENT_LOOP.run_until_complete(initializeClient(args.homeserver, args.bot_uid, args.device_name, args.bot_pwd, args.room_id))
