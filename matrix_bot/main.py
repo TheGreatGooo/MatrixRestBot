@@ -58,11 +58,12 @@ async def initializeClient(homeserver, bot_user_id, device_name, bot_password, r
     else:
         with open(CONFIG_FILE, "r") as f:
             config = json.load(f)
-            client = AsyncClient(config["homeserver"],store_path = "store/", config=ClientConfig(encryption_enabled=True,store_sync_tokens=True))
+            client = AsyncClient(config["homeserver"],config["user_id"],device_id=config["device_id"],store_path = "store/", config=ClientConfig(encryption_enabled=True,store_sync_tokens=True))
             room = room_id
             client.access_token = config["access_token"]
             client.user_id = config["user_id"]
             client.device_id = config["device_id"]
+            client.load_store()
     async def after_first_sync():
         print("Awaiting sync")
         await client.synced.wait()
