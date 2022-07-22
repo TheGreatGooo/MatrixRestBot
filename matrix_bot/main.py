@@ -9,14 +9,18 @@ import sys
 import argparse
 from flask import Flask, jsonify, request
 from importlib import util
-from nio import AsyncClient, LoginResponse, ClientConfig, exceptions, crypto
+from nio import AsyncClient, LoginResponse, ClientConfig, exceptions, crypto, RoomMessageText, MatrixRoom
 from concurrent.futures import ThreadPoolExecutor
+import time
 
 CONFIG_FILE = "credentials.json"
 APP = Flask(__name__)
 room = None
 client = None
 EVENT_LOOP = asyncio.events.new_event_loop()
+NUMBER_OF_MESSAGES_TO_CACHE = 10
+MESSAGE_CACHE = []
+
 def write_details_to_disk(resp: LoginResponse, homeserver) -> None:
     with open(CONFIG_FILE, "w") as f:
         json.dump(
@@ -64,11 +68,13 @@ async def initializeClient(homeserver, bot_user_id, device_name, bot_password, r
             client.user_id = config["user_id"]
             client.device_id = config["device_id"]
             client.load_store()
+    client.add_event_callback(store_recent_messages,RoomMessageText)
     async def after_first_sync():
         print("Awaiting sync")
         await client.synced.wait()
+        print("Sync completed")
         APP.event_loop = EVENT_LOOP
-        EVENT_LOOP.run_in_executor(ThreadPoolExecutor(), APP.run)
+        ThreadPoolExecutor().submit(APP.run)
     after_first_sync_task = asyncio.ensure_future(after_first_sync())
     sync_forever_task = asyncio.ensure_future(
         client.sync_forever(30000, full_state=True)
@@ -78,11 +84,28 @@ async def initializeClient(homeserver, bot_user_id, device_name, bot_password, r
         sync_forever_task,
     )
 
+async def store_recent_messages(room: MatrixRoom, event: RoomMessageText):
+    if event.sender == client.user :
+        return
+    if event.decrypted:
+        encrypted_symbol = "🛡 "
+    else:
+        encrypted_symbol = "⚠️ "
+    MESSAGE_CACHE.append({
+        "roomName": room.display_name,
+        "isEncrpted": event.decrypted,
+        "user_name": room.user_name(event.sender),
+        "message": event.body,
+        "message_received_ts": time.time(),
+    })
+    if len(MESSAGE_CACHE)>NUMBER_OF_MESSAGES_TO_CACHE :
+        for _ in range(0,len(MESSAGE_CACHE)-NUMBER_OF_MESSAGES_TO_CACHE) :
+            MESSAGE_CACHE.pop(0)
+
 def trust_devices(user_id):
      print(f"{user_id}'s device store: {client.device_store[user_id]}")
      for device_id, olm_device in client.device_store[user_id].items():
             if user_id == client.user_id and device_id == client.device_id:
-                # We cannot explictly trust the device @alice is using
                 continue
             client.verify_device(olm_device)
             print(f"Trusting {device_id} from user {user_id}")
@@ -96,7 +119,7 @@ async def message_handler():
     return get_message_cache()
 
 def get_message_cache():
-    return []
+    return jsonify(MESSAGE_CACHE)
 
 async def send_message(message_to_send):
     print(f"sending to {room} message {message_to_send['body']}")
@@ -123,7 +146,7 @@ def main() -> None:
     parser.add_argument('--bot_pwd', help='The password for the bot only required for the initial run', required=False)
     parser.add_argument('--room_id', help='The room this bot is monitoring ie. !BotParty:cake.example.org', required=True)
 
-    print("encryption enabled")
+    print("encryption library:")
     print(util.find_spec("olm"))
     args = parser.parse_args()
     asyncio.set_event_loop(EVENT_LOOP)
