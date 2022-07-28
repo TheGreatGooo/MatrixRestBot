@@ -21,8 +21,8 @@ EVENT_LOOP = asyncio.events.new_event_loop()
 NUMBER_OF_MESSAGES_TO_CACHE = 10
 MESSAGE_CACHE = []
 
-def write_details_to_disk(resp: LoginResponse, homeserver) -> None:
-    with open(CONFIG_FILE, "w") as f:
+def write_details_to_disk(resp: LoginResponse, homeserver, conf_dir) -> None:
+    with open(f'{conf_dir}/{CONFIG_FILE}', "w") as f:
         json.dump(
             {
                 "homeserver": homeserver,
@@ -54,7 +54,7 @@ async def initializeClient(homeserver, bot_user_id, device_name, bot_password, r
         resp = await client.login(pw, device_name=device_name)
 
         if isinstance(resp, LoginResponse):
-            write_details_to_disk(resp, homeserver)
+            write_details_to_disk(resp, homeserver, conf_dir)
         else:
             print(f'homeserver = "{homeserver}"; user = "{user_id}"')
             print(f"Failed to log in: {resp}")
