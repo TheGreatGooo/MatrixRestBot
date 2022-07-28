@@ -60,7 +60,7 @@ async def initializeClient(homeserver, bot_user_id, device_name, bot_password, r
             print(f"Failed to log in: {resp}")
             sys.exit(1)
     else:
-        with open(CONFIG_FILE, "r") as f:
+        with open(f'{conf_dir}/{CONFIG_FILE}', "r") as f:
             config = json.load(f)
             client = AsyncClient(config["homeserver"],config["user_id"],device_id=config["device_id"],store_path = f'{conf_dir}/store/', config=ClientConfig(encryption_enabled=True,store_sync_tokens=True))
             room = room_id
