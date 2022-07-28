@@ -34,10 +34,10 @@ def write_details_to_disk(resp: LoginResponse, homeserver) -> None:
         )
 
 
-async def initializeClient(homeserver, bot_user_id, device_name, bot_password, room_id) -> None:
+async def initializeClient(homeserver, bot_user_id, device_name, bot_password, room_id, conf_dir) -> None:
     global client
     global room
-    if not os.path.exists(CONFIG_FILE):
+    if not os.path.exists(f'{conf_dir}/{CONFIG_FILE}'):
         print(
             "First time use. Did not find credential file. Asking for "
             "homeserver, user, and password to create credential file."
@@ -48,7 +48,7 @@ async def initializeClient(homeserver, bot_user_id, device_name, bot_password, r
 
         user_id = bot_user_id
         room = room_id
-        client = AsyncClient(homeserver, user_id,store_path = "store/", config=ClientConfig(encryption_enabled=True,store_sync_tokens=True))
+        client = AsyncClient(homeserver, user_id,store_path = f'{conf_dir}/store/', config=ClientConfig(encryption_enabled=True,store_sync_tokens=True))
         pw = bot_password
 
         resp = await client.login(pw, device_name=device_name)
@@ -62,7 +62,7 @@ async def initializeClient(homeserver, bot_user_id, device_name, bot_password, r
     else:
         with open(CONFIG_FILE, "r") as f:
             config = json.load(f)
-            client = AsyncClient(config["homeserver"],config["user_id"],device_id=config["device_id"],store_path = "store/", config=ClientConfig(encryption_enabled=True,store_sync_tokens=True))
+            client = AsyncClient(config["homeserver"],config["user_id"],device_id=config["device_id"],store_path = f'{conf_dir}/store/', config=ClientConfig(encryption_enabled=True,store_sync_tokens=True))
             room = room_id
             client.access_token = config["access_token"]
             client.user_id = config["user_id"]
@@ -145,9 +145,10 @@ def main() -> None:
     parser.add_argument('--device_name', help='The device name ie. ARowBot', required=True)
     parser.add_argument('--bot_pwd', help='The password for the bot only required for the initial run', required=False)
     parser.add_argument('--room_id', help='The room this bot is monitoring ie. !BotParty:cake.example.org', required=True)
+    parser.add_argument('--conf_dir', help='Configuration directory', required=True)
 
     print("encryption library:")
     print(util.find_spec("olm"))
     args = parser.parse_args()
     asyncio.set_event_loop(EVENT_LOOP)
-    EVENT_LOOP.run_until_complete(initializeClient(args.homeserver, args.bot_uid, args.device_name, args.bot_pwd, args.room_id))
+    EVENT_LOOP.run_until_complete(initializeClient(args.homeserver, args.bot_uid, args.device_name, args.bot_pwd, args.room_id, args.conf_dir))
