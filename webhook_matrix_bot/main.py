@@ -74,7 +74,7 @@ async def initializeClient(homeserver, bot_user_id, device_name, bot_password, r
         await client.synced.wait()
         print("Sync completed")
         APP.event_loop = EVENT_LOOP
-        ThreadPoolExecutor().submit(APP.run, kwargs={'host':'0.0.0.0','debug':False})
+        ThreadPoolExecutor().submit(APP.run, kwargs={'host':'0.0.0.0'})
     after_first_sync_task = asyncio.ensure_future(after_first_sync())
     sync_forever_task = asyncio.ensure_future(
         client.sync_forever(30000, full_state=True)
