@@ -5,6 +5,7 @@ import asyncio
 import getpass
 import json
 import os
+from pickle import FALSE
 import sys
 import argparse
 from flask import Flask, jsonify, request
@@ -74,7 +75,7 @@ async def initializeClient(homeserver, bot_user_id, device_name, bot_password, r
         await client.synced.wait()
         print("Sync completed")
         APP.event_loop = EVENT_LOOP
-        ThreadPoolExecutor().submit(APP.run)
+        ThreadPoolExecutor().submit(start_flask)
     after_first_sync_task = asyncio.ensure_future(after_first_sync())
     sync_forever_task = asyncio.ensure_future(
         client.sync_forever(30000, full_state=True)
@@ -83,6 +84,9 @@ async def initializeClient(homeserver, bot_user_id, device_name, bot_password, r
         after_first_sync_task,
         sync_forever_task,
     )
+
+def start_flask():
+    APP.run("0.0.0.0",5000,False)
 
 async def store_recent_messages(room: MatrixRoom, event: RoomMessageText):
     if event.sender == client.user :
