@@ -117,7 +117,7 @@ def trust_devices(user_id):
 @APP.route('/message', methods=['GET','POST'])
 async def message_handler():
  if request.method == 'POST':
-    EVENT_LOOP.create_task(send_message(request.get_json()))
+    EVENT_LOOP.create_task(send_message(request.get_json(),request.args.get("format",default='{body}',type=str)))
     return jsonify("{'data':'Done!'}")
  elif request.method == 'GET':
     return get_message_cache()
@@ -125,13 +125,13 @@ async def message_handler():
 def get_message_cache():
     return jsonify(MESSAGE_CACHE)
 
-async def send_message(message_to_send):
-    print(f"sending to {room} message {message_to_send['body']}")
+async def send_message(message_to_send, format):
+    print(f"sending to {room} message {message_to_send} with format {format}")
     try:
         await client.room_send(
                 room,
                 message_type="m.room.message",
-                content={"msgtype": "m.text", "body": message_to_send['body']},
+                content={"msgtype": "m.text", "body": format.format(**message_to_send)},
                 ignore_unverified_devices=True,
             )
     except exceptions.OlmUnverifiedDeviceError as err:
