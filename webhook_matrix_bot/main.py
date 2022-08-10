@@ -74,7 +74,6 @@ async def initializeClient(homeserver, bot_user_id, device_name, bot_password, r
         print("Awaiting sync")
         await client.synced.wait()
         print("Sync completed")
-        APP.event_loop = EVENT_LOOP
         ThreadPoolExecutor().submit(start_flask)
     after_first_sync_task = asyncio.ensure_future(after_first_sync())
     sync_forever_task = asyncio.ensure_future(
@@ -154,5 +153,4 @@ def main() -> None:
     print("encryption library:")
     print(util.find_spec("olm"))
     args = parser.parse_args()
-    asyncio.set_event_loop(EVENT_LOOP)
     EVENT_LOOP.run_until_complete(initializeClient(args.homeserver, args.bot_uid, args.device_name, args.bot_pwd, args.room_id, args.conf_dir))
